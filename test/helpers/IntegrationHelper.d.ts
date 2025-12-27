@@ -104,6 +104,12 @@ interface PlayerInfo {
     username: string;
 }
 
+export interface _Leader {
+    name: string;
+    id: string;
+    subtitle?: string;
+}
+
 interface SwuSetupTestOptions extends ISerializedGameState {
     autoSingleTarget?: boolean;
     phaseTransitionHandler?: (phase: PhaseName) => void;
