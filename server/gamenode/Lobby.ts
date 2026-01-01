@@ -29,6 +29,7 @@ import type { IQueueFormatKey } from './QueueHandler';
 import { SimpleActionTimer } from '../game/core/actionTimer/SimpleActionTimer';
 import { PlayerTimeRemainingStatus } from '../game/core/actionTimer/IActionTimer';
 import { ModerationType } from '../services/DynamoDBInterfaces';
+import { _Leader } from '../../test/helpers/IntegrationHelper';
 
 interface LobbySpectatorWrapper {
     id: string;
@@ -1016,6 +1017,41 @@ export class Lobby {
         this.lobbyOwnerId = id;
     }
 
+    //Used to get base objects from cards obj attached to game for gamePreview for testing games. 
+    private findKeyInMap<K, V>(map: Map<K, V>, targetValue: V): K | undefined {
+            for (const [key, value] of map.entries()) {
+                if (value === targetValue) {
+                    return key;
+                }
+            }
+        return undefined;
+    }
+
+    //PARAMS TO BE SET
+    //Used to get leaders from _leaders obj attached to game for gamePreview for testing games - needs to be moved to appropriate location
+    private getIdFromLeader(player1Leader: string, player2Leader: string, db: _Leader[]): { p1LeaderID: string; p2LeaderID: string } | undefined {
+        // Split the string into the two keys
+        const [p1leaderName, p1leaderSubtitle] = player1Leader.split('#');
+        const [p2leaderName, p2leaderSubtitle] = player2Leader.split('#');
+
+        //Matching both title and subtitle to find leader set_num
+        const match1 = db.find(item => 
+            item.name === p1leaderName && 
+            item.subtitle === p1leaderSubtitle
+        );
+
+        const match2 = db.find(item => 
+            item.name === p2leaderName && 
+            item.subtitle === p2leaderSubtitle
+        );
+
+        const p1id = match1.id
+        const p2id = match2.id
+        const result = {p1LeaderID: p1id, p2LeaderID: p2id}
+
+        return result;
+    }
+
     public getGamePreview() {
         if (!this.game) {
             return null;
@@ -1026,7 +1062,59 @@ export class Lobby {
             }
             const player1 = this.users[0];
             const player2 = this.users[1];
+            
+            //Checks to see if testing users
+            if (player1.id == 'exe66' || player2.id == 'th3w4y') {
+                //Decks do not attach properly to users, this will be null. 
+                if (player1.deck == null || player2.deck == null) {
+                    
+                    const testData = (this as any).testSetupData;
 
+
+                    const findCardByInternalName = (name) => {
+                        return Array.from(this.game.cardDataGetter.cardMap.values())
+                                    .find(card => card.internalName === name);
+                    };
+
+                    //reduces setup data provided to leaders and bases for players
+                    const playerInfo = ['player1', 'player2'].reduce((acc, p) => {
+                        const getVal = (val) => typeof val === 'object' ? val.card : val;
+                        
+                        acc[p] = {
+                            base: getVal(testData[p].base),
+                            leader: getVal(testData[p].leader)
+                        };
+                            return acc;
+                    }, {});
+
+                    //TO BE COMPLETED
+                    const p1BaseID = findCardByInternalName(playerInfo["player1"]["base"])
+                    const p2BaseID = findCardByInternalName(playerInfo["player2"]["base"])
+                    const p1LeaderName = playerInfo["player1"]["leader"].split('#')
+                    const p2LeaderName = playerInfo["player2"]["leader"].split('#')
+                    
+                    const p1BaseKey = this.findKeyInMap(this.game.cardDataGetter.setCodeMap, p1BaseID["id"])
+                    const p2BaseKey = this.findKeyInMap(this.game.cardDataGetter.setCodeMap, p2BaseID["id"])
+        
+                    const p1Leader = { id: 'SOR_005' }
+                    const p2Leader = { id: 'SOR_005' }
+                    const p1Base = { id: p1BaseKey }
+                    const p2Base = { id: p2BaseKey }
+
+                    return {
+                        id: this.id,
+                        isPrivate: this.isPrivate,
+                        player1Leader: p1Leader,
+                        player1Base: p1Base,
+                        player2Leader: p2Leader,
+                        player2Base: p2Base,
+                    };
+
+                }
+
+            }
+
+                    
             return {
                 id: this.id,
                 isPrivate: this.isPrivate,
@@ -1155,6 +1243,8 @@ export class Lobby {
         if (setupData.autoSingleTarget == null) {
             setupData.autoSingleTarget = false;
         }
+
+        (this as any).testSetupData = setupData;
 
         Contract.assertNotNullLike(this.testGameBuilder, `Attempting to start a test game from file ${filename} but local test tools were not found`);
 
